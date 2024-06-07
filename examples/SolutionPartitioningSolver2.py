@@ -8,6 +8,7 @@ project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.join(project_dir, 'src'))
 
 from vrp_solvers import SolutionPartitioningSolver, FullQuboSolver
+from vrp_solvers import TabuSolver
 import DWaveSolvers
 from input import *
 
@@ -39,3 +40,16 @@ if __name__ == '__main__':
         print("Total cost : ", solution.total_cost())
         print("Weights : ", solution.all_weights())
         print("\n")
+
+
+        # Solving problem on SolutionPartitioningSolver.
+        solver = TabuSolver(problem, anti_noiser = False, max_len = 25)
+        solution = solver.solve(only_one_const, order_const, solver_type = 'qpu')
+
+        # Checking if solution is correct.
+        if solution == None or solution.check() == False:
+            print("Tabu Solver hasn't find solution.\n")
+        else:
+            print("Tabu Solution : ", solution.solution) 
+            print("Tabu Total cost : ", solution.total_cost())
+            print("\n")

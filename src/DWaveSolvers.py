@@ -1,6 +1,6 @@
 # File simplifies communication with DWave solvers. 
 
-from dwave_qbsolv import QBSolv
+import neal
 import hybrid
 
 # Creates hybrid solver with hardcoded configuration.
@@ -20,12 +20,12 @@ def get_solver(solver_type):
     if solver_type == 'qpu':
         solver = hybrid_solver()
     if solver_type == 'cpu':
-        solver = QBSolv()
+        solver = neal.SimulatedAnnealingSampler()
     return solver
 
 # Solves qubo on qpu. Returns list of solutions.
 def solve_qubo(qubo, solver_type = 'cpu'):
     sampler = get_solver(solver_type)
-    response = sampler.sample_qubo(qubo.dict)
+    response = sampler.sample_qubo(qubo.dict, num_reads=1000)
     return list(response)[0]
     

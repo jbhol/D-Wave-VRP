@@ -19,17 +19,17 @@ if __name__ == '__main__':
     only_one_const = 10000000.
     order_const = 1.
 
-    for t in ['small_graph1', 'small_graph2', 'small_graph3']:
+    for t in ['example_small1']:
         print("Test : ", t)
 
         # Reading problem from file.
-        path = os.path.join(project_dir, 'tests/vrp/' + t + '.test')
+        path = os.path.join(project_dir, 'tests/cvrp/' + t + '.test')
         problem = read_full_test(path, graph_path ,capacity = False)
         limit_radius = int(len(problem.dests) / 10) # set limit_radius parameter
 
         # Solving problem on AveragePartitionSolver.
         solver = AveragePartitionSolver(problem, limit_radius)
-        solution = solver.solve(only_one_const, order_const, solver_type = 'cpu')
+        solution = solver.solve(only_one_const, order_const, solver_type = 'qpu')
 
         # Checking if solution is correct.
         if solution == None or solution.check() == False:
