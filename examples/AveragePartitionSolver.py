@@ -10,6 +10,7 @@ sys.path.append(os.path.join(project_dir, 'src'))
 from vrp_solvers import AveragePartitionSolver
 import DWaveSolvers
 from input import *
+from input_CMT_dataset import *
 
 if __name__ == '__main__':
 
@@ -19,17 +20,24 @@ if __name__ == '__main__':
     only_one_const = 10000000.
     order_const = 1.
 
-    for t in ['example_small1']:
+    # for t in ['example_small1']:
+    for t in ['cmt1.vrp']:
         print("Test : ", t)
 
         # Reading problem from file.
-        path = os.path.join(project_dir, 'tests/cvrp/' + t + '.test')
-        problem = read_full_test(path, graph_path ,capacity = False)
+        # path = os.path.join(project_dir, 'tests/cvrp/' + t + '.test')
+        # problem = read_full_test(path, graph_path ,capacity = False)
+        path = os.path.join(project_dir, 'tests/cvrp/' + t)
+        problem, g = create_vrp_problem(path)
+        problem.first_source = True
+        problem.last_source = True
         limit_radius = int(len(problem.dests) / 10) # set limit_radius parameter
+        # limit_radius = int(len(problem.dests) / len(problem.capacities)) # set limit_radius parameter
 
         # Solving problem on AveragePartitionSolver.
         solver = AveragePartitionSolver(problem, limit_radius)
-        solution = solver.solve(only_one_const, order_const, solver_type = 'qpu')
+        # solution = solver.solve(only_one_const, order_const, solver_type = 'qpu')
+        solution = solver.solve(only_one_const, order_const, solver_type = 'cpu')
 
         # Checking if solution is correct.
         if solution == None or solution.check() == False:

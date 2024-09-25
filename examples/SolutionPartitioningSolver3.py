@@ -10,6 +10,7 @@ sys.path.append(os.path.join(project_dir, 'src'))
 from vrp_solvers import SolutionPartitioningSolver, DBScanSolver
 import DWaveSolvers
 from input import *
+from input_CMT_dataset import *
 
 if __name__ == '__main__':
 
@@ -17,12 +18,17 @@ if __name__ == '__main__':
     only_one_const = 10000000.
     order_const = 1.
 
-    for t in ['example_medium4', 'example_medium5', 'example_medium6']:
+    # for t in ['example_medium4', 'example_medium5', 'example_medium6']:
+    for t in ['cmt1.vrp']:
         print("Test : ", t)
 
         # Reading problem from file.
-        path = os.path.join(project_dir, 'tests/cvrp/' + t + '.test')
-        problem = read_test(path, capacity = True)
+        # path = os.path.join(project_dir, 'tests/cvrp/' + t + '.test')
+        path = os.path.join(project_dir, 'tests/cvrp/' + t)
+        # problem = read_test(path, capacity = True)
+        problem, g = create_vrp_problem(path)
+        problem.first_source = True
+        problem.last_source = True
 
         # Solving problem on SolutionPartitioningSolver.
         solver = SolutionPartitioningSolver(problem, DBScanSolver(problem, anti_noiser = True))

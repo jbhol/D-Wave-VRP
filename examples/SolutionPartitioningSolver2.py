@@ -11,6 +11,7 @@ from vrp_solvers import SolutionPartitioningSolver, FullQuboSolver
 from vrp_solvers import TabuSolver
 import DWaveSolvers
 from input import *
+from input_CMT_dataset import *
 
 if __name__ == '__main__':
 
@@ -20,12 +21,17 @@ if __name__ == '__main__':
     only_one_const = 10000000.
     order_const = 1.
 
-    for t in ['example_small1', 'example_small2', 'example_small3']:
+    # for t in ['example_small1', 'example_small2', 'example_small3']:
+    for t in ['cmt1.vrp']:
         print("Test : ", t)
 
         # Reading problem from file.
-        path = os.path.join(project_dir, 'tests/cvrp/' + t + '.test')
-        problem = read_full_test(path, graph_path, capacity = True)
+        # path = os.path.join(project_dir, 'tests/cvrp/' + t + '.test')
+        path = os.path.join(project_dir, 'tests/cvrp/' + t)
+        # problem = read_full_test(path, graph_path, capacity = True)
+        problem, g = create_vrp_problem(path)
+        problem.first_source = True
+        problem.last_source = True
 
         # Solving problem on SolutionPartitioningSolver.
         solver = SolutionPartitioningSolver(problem, FullQuboSolver(problem))
@@ -44,7 +50,8 @@ if __name__ == '__main__':
 
         # Solving problem on SolutionPartitioningSolver.
         solver = TabuSolver(problem, anti_noiser = False, max_len = 25)
-        solution = solver.solve(only_one_const, order_const, solver_type = 'qpu')
+        # solution = solver.solve(only_one_const, order_const, solver_type = 'qpu')
+        solution = solver.solve(only_one_const, order_const, solver_type = 'cpu')
 
         # Checking if solution is correct.
         if solution == None or solution.check() == False:

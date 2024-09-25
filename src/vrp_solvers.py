@@ -1,10 +1,12 @@
 from math import sqrt
+import time
 import random
 from qubo_helper import Qubo
 from vrp_problem import VRPProblem
 from vrp_solution import VRPSolution
 from itertools import product
 import DWaveSolvers
+import QiskitSolvers
 import networkx as nx
 import numpy as np
 from queue import Queue
@@ -63,6 +65,191 @@ class AveragePartitionSolver(VRPSolver):
 
         solution = VRPSolution(self.problem, sample, max_limits)
         return solution
+
+
+class LocalSearchSolver(VRPSolver):
+    def __init__(self, problem):
+        self.problem = problem
+
+    def init_solution(self):
+        dests = self.problem.dests
+        capacities = self.problem.capacities
+        vehicles = len(self.problem.capacities)
+        costs = self.problem.costs
+        weights = self.problem.weights
+
+        routes = [[0] for _ in range(vehicles)]
+
+        visited = [False for _ in range(len(dests) + 1)]
+
+        for vehicle_id, capacity in enumerate(capacities):
+            cur_node = 0
+            cur_weight = weights[0]
+
+            flag = True
+            while flag:
+                flag = False
+                best_node = None
+                for node in dests:
+                    if visited[node]:
+                        continue
+                    if cur_weight + weights[node] > capacity:
+                        continue
+                    if best_node is None or costs[cur_node, best_node] < costs[cur_node, node]:
+                        best_node = node
+                        flag = True
+                if best_node is not None:
+                    routes[vehicle_id].append(best_node)
+                    visited[best_node] = True
+                    cur_weight += weights[best_node]
+                cur_node = best_node
+
+            routes[vehicle_id].append(0)
+
+        self.cur_solution = routes
+
+    def compute_cost(self, routes):
+        costs = self.problem.costs
+        cost = 0
+        for route in routes:
+            for i in range(len(route)-1):
+                u, v = route[i], route[i+1]
+                cost += costs[u, v]
+
+        return cost
+
+    def compute_weights(self, routes):
+        weights = self.problem.weights
+        route_weights = [0 for _ in self.problem.capacities]
+
+        for vehicle_id, route in enumerate(routes):
+            for node in route:
+                route_weights[vehicle_id] += weights[node]
+        
+        return route_weights
+
+    def resequence_one_node(self, resequence_node, only_one_const, solver_type):
+        costs = self.problem.costs
+        capacities = self.problem.capacities
+        weights = self.problem.weights
+
+        cur_routes = copy.deepcopy(self.cur_solution)
+        cur_cost = self.compute_cost(cur_routes)
+        cur_route_weights = self.compute_weights(cur_routes)
+
+        # find the node in the routes
+        tmp_routes = None
+        for vehicle_id, route in enumerate(cur_routes):
+            for i, node in enumerate(route):
+                if node == resequence_node:
+                    prev_node, next_node = route[i-1], route[i+1]
+                    tmp_routes = copy.deepcopy(cur_routes)
+                    tmp_routes[vehicle_id].pop(i)
+                    removed_cost = costs[prev_node, node] + costs[node, next_node] - costs[prev_node, next_node]
+                    cur_route_weights[vehicle_id] -= weights[node]
+        
+        # find a better solution
+        best_routes = copy.deepcopy(cur_routes)
+        best_cost = cur_cost
+        for vehicle_id, route in enumerate(tmp_routes):
+            if cur_route_weights[vehicle_id] + weights[resequence_node] > capacities[vehicle_id]:
+                continue
+
+            # TODO: 
+            qubo = Qubo()
+
+            edge_ids = []
+            costs_dict = {}
+            for i in range(len(route)-1):
+                prev_node, next_node = route[i], route[i+1]
+                inserted_cost = costs[prev_node, resequence_node] + costs[resequence_node, next_node] - costs[prev_node, next_node]
+                
+                index = ((i, prev_node), (i+1, next_node))
+                costs_dict[index] = inserted_cost
+
+                qubo.add((index, index), inserted_cost)
+                edge_ids.append(index)
+
+            qubo.add_only_one_constraint(edge_ids, only_one_const)
+
+            # sample = DWaveSolvers.solve_qubo(qubo, solver_type=solver_type)
+            sample = QiskitSolvers.solve_qubo(qubo, solver_type=solver_type)
+
+            flag = False
+
+            '''
+            for i in range(len(route)-1):
+                prev_node, next_node = route[i], route[i+1]
+                inserted_cost = costs[prev_node, resequence_node] + costs[resequence_node, next_node] - costs[prev_node, next_node]
+                if best_cost > cur_cost - removed_cost + inserted_cost:
+                    best_cost = cur_cost - removed_cost + inserted_cost
+                    best_routes = copy.deepcopy(tmp_routes)
+                    best_routes[vehicle_id].insert(i+1, resequence_node)
+
+                    flag = True
+            # '''
+
+            # '''
+            for index, value in sample.items():
+                if value == 1:
+                    (prev_id, prev_node), (next_id, next_node) = index
+                    inserted_cost = costs[prev_node, resequence_node] + costs[resequence_node, next_node] - costs[prev_node, next_node]
+                    if best_cost > cur_cost - removed_cost + inserted_cost:
+                        best_cost = cur_cost - removed_cost + inserted_cost
+                        best_routes = copy.deepcopy(tmp_routes)
+                        best_routes[vehicle_id].insert(next_id, resequence_node)
+            # '''
+
+            if flag:
+                print(vehicle_id)
+                print(sample)
+                print(resequence_node)
+                print(best_routes)
+                print(costs_dict)
+
+        return best_routes, best_cost
+
+    def solve(self, only_one_const, order_const, solver_type = 'cpu'):
+        dests = self.problem.dests
+        capacities = self.problem.capacities
+        vehicles = len(self.problem.capacities)
+        costs = self.problem.costs
+        weights = self.problem.weights
+
+        self.init_solution()
+
+        is_optimal = False
+        best_cost = None
+        while not is_optimal:
+            t_now = time.time()
+            nodes_list = [d for d in dests]
+            np.random.shuffle(nodes_list)
+
+            local_best_cost = None
+            local_best_routes = None
+
+            for node in nodes_list:
+                new_routes, cost = self.resequence_one_node(node, only_one_const, solver_type)
+                if local_best_cost is None or local_best_cost > cost:
+                    local_best_cost = cost
+                    local_best_routes = copy.deepcopy(new_routes)
+       
+            if best_cost is None or best_cost > local_best_cost:
+                best_cost = local_best_cost
+                self.cur_solution = copy.deepcopy(local_best_routes)
+            else:
+                is_optimal = True
+            print('Current best cost:', best_cost)
+            print('Time:', time.time() - t_now)
+      
+        # clean the route
+        for route in self.cur_solution:
+            if len(route) == 2:
+                route.clear()
+
+        solution = VRPSolution(self.problem, solution=self.cur_solution)
+        return solution
+
 
 # Solver uses DBScan to divide problem into subproblems that can be solved effectively by FullQuboSolver.
 # Attributes : max_len - maximum number of deliveries in problems solved by FullQuboSolver.
