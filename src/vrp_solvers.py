@@ -1,10 +1,12 @@
 from math import sqrt
+import time
 import random
 from qubo_helper import Qubo
 from vrp_problem import VRPProblem
 from vrp_solution import VRPSolution
 from itertools import product
 import DWaveSolvers
+import QiskitSolvers
 import networkx as nx
 import numpy as np
 from queue import Queue
@@ -170,7 +172,8 @@ class LocalSearchSolver(VRPSolver):
 
             qubo.add_only_one_constraint(edge_ids, only_one_const)
 
-            sample = DWaveSolvers.solve_qubo(qubo, solver_type=solver_type)
+            # sample = DWaveSolvers.solve_qubo(qubo, solver_type=solver_type)
+            sample = QiskitSolvers.solve_qubo(qubo, solver_type=solver_type)
 
             flag = False
 
@@ -218,6 +221,7 @@ class LocalSearchSolver(VRPSolver):
         is_optimal = False
         best_cost = None
         while not is_optimal:
+            t_now = time.time()
             nodes_list = [d for d in dests]
             np.random.shuffle(nodes_list)
 
@@ -236,6 +240,7 @@ class LocalSearchSolver(VRPSolver):
             else:
                 is_optimal = True
             print('Current best cost:', best_cost)
+            print('Time:', time.time() - t_now)
       
         # clean the route
         for route in self.cur_solution:
