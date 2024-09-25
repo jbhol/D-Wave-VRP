@@ -126,7 +126,7 @@ class LocalSearchSolver(VRPSolver):
         
         return route_weights
 
-    def resequence_one_node(self, resequence_node):
+    def resequence_one_node(self, resequence_node, only_one_const, solver_type):
         costs = self.problem.costs
         capacities = self.problem.capacities
         weights = self.problem.weights
@@ -150,16 +150,59 @@ class LocalSearchSolver(VRPSolver):
         best_routes = copy.deepcopy(cur_routes)
         best_cost = cur_cost
         for vehicle_id, route in enumerate(tmp_routes):
-            for i in range(len(route)-1):
-                if cur_route_weights[vehicle_id] + weights[resequence_node] > capacities[vehicle_id]:
-                    continue
+            if cur_route_weights[vehicle_id] + weights[resequence_node] > capacities[vehicle_id]:
+                continue
 
+            # TODO: 
+            qubo = Qubo()
+
+            edge_ids = []
+            costs_dict = {}
+            for i in range(len(route)-1):
+                prev_node, next_node = route[i], route[i+1]
+                inserted_cost = costs[prev_node, resequence_node] + costs[resequence_node, next_node] - costs[prev_node, next_node]
+                
+                index = ((i, prev_node), (i+1, next_node))
+                costs_dict[index] = inserted_cost
+
+                qubo.add((index, index), inserted_cost)
+                edge_ids.append(index)
+
+            qubo.add_only_one_constraint(edge_ids, only_one_const)
+
+            sample = DWaveSolvers.solve_qubo(qubo, solver_type=solver_type)
+
+            flag = False
+
+            '''
+            for i in range(len(route)-1):
                 prev_node, next_node = route[i], route[i+1]
                 inserted_cost = costs[prev_node, resequence_node] + costs[resequence_node, next_node] - costs[prev_node, next_node]
                 if best_cost > cur_cost - removed_cost + inserted_cost:
                     best_cost = cur_cost - removed_cost + inserted_cost
                     best_routes = copy.deepcopy(tmp_routes)
                     best_routes[vehicle_id].insert(i+1, resequence_node)
+
+                    flag = True
+            # '''
+
+            # '''
+            for index, value in sample.items():
+                if value == 1:
+                    (prev_id, prev_node), (next_id, next_node) = index
+                    inserted_cost = costs[prev_node, resequence_node] + costs[resequence_node, next_node] - costs[prev_node, next_node]
+                    if best_cost > cur_cost - removed_cost + inserted_cost:
+                        best_cost = cur_cost - removed_cost + inserted_cost
+                        best_routes = copy.deepcopy(tmp_routes)
+                        best_routes[vehicle_id].insert(next_id, resequence_node)
+            # '''
+
+            if flag:
+                print(vehicle_id)
+                print(sample)
+                print(resequence_node)
+                print(best_routes)
+                print(costs_dict)
 
         return best_routes, best_cost
 
@@ -182,7 +225,7 @@ class LocalSearchSolver(VRPSolver):
             local_best_routes = None
 
             for node in nodes_list:
-                new_routes, cost = self.resequence_one_node(node)
+                new_routes, cost = self.resequence_one_node(node, only_one_const, solver_type)
                 if local_best_cost is None or local_best_cost > cost:
                     local_best_cost = cost
                     local_best_routes = copy.deepcopy(new_routes)
