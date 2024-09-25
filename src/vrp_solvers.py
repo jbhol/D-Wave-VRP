@@ -325,31 +325,29 @@ class TabuSolver(VRPSolver):
                 return False
         return True 
 
-    def __init__(self, problem, max_len = 10, anti_noiser = True):
-        self.problem = problem
-        self.anti_noiser = anti_noiser
-        self.max_len = max_len
-        self.max_weight = max(problem.capacities)
-        self.max_dist = sum(map(sum, problem.costs))
+    def calculate_neighbor_cost(problem, clusters):
+        routes = copy.deepcopy(clusters)
+        check_sol = VRPSolution(problem, None, None, routes)
+        # Adding first and last magazine.
+        for rte in check_sol.solution:
+            if rte:
+                if problem.first_source:
+                    rte.insert(0, problem.in_nearest_sources[rte[0]])
+                if problem.last_source:
+                    rte.append(problem.out_nearest_sources[rte[-1]])    
+        return check_sol.total_cost()
 
-    def solve(self, only_one_const, order_const, solver_type = 'cpu'):
-        problem = self.problem
-        dests = problem.dests
-        N = len(dests)
-        costs = problem.costs
-        sources = [problem.source]
-        capacities = problem.capacities
-        weights = problem.weights
-        vehicles = len(problem.capacities)
+    def calculate_route_cost(route, costs, sources):
+        """Calculates the total cost of a given route."""
+        total_cost = 0
+        prev = sources[0]  # Assuming single source for simplicity
+        for dest in route:
+            total_cost += costs[prev][dest]
+            prev = dest
+        total_cost += costs[prev][sources[0]]  # Return to source
+        return total_cost
 
-        neighborhood = [[] for _ in range(len(weights))]
-        for d in dests:
-            indices = np.argpartition(costs[d][:], vehicles*2)[:vehicles*2]
-            neighborhood[d] = indices
-
-        sorted_dests = sorted(dests, reverse=True , key=lambda i: costs[problem.in_nearest_sources[i]][i]) #costs[0][i]
-        sorted_dests = [item for item in sorted_dests if item in dests]
-
+    def build_initial_solution(vehicles, sorted_dests, neighborhood, weights, capacities):
         # 1. build initial solution
         clusters = list()
         for i in range(vehicles):
@@ -385,8 +383,8 @@ class TabuSolver(VRPSolver):
                     #check if clusters[j] has room for d
                     weight = 0
                     for dest in clusters[i]:
-                        weight += self.problem.weights[dest]  #cluster current weight     
-                    if weight + self.problem.weights[d] <= capacities[i]:   
+                        weight += weights[dest]  #cluster current weight     
+                    if weight + weights[d] <= capacities[i]:   
                         clusters[i].append(d)
                         sorted_dests.pop(a)
                         found = True
@@ -399,27 +397,54 @@ class TabuSolver(VRPSolver):
                 for i in range(vehicles):
                     weight = 0
                     for dest in clusters[i]:
-                        weight += self.problem.weights[dest]  #cluster current weight   
-                    if weight + self.problem.weights[d] <= capacities[i]:   
+                        weight += weights[dest]  #cluster current weight   
+                    if weight + weights[d] <= capacities[i]:   
                         clusters[i].append(d)
                         sorted_dests.pop(a)
                         found = True
-                        break    
-        
+                        break 
+        return clusters
+
+    def __init__(self, problem, max_len = 10, anti_noiser = True):
+        self.problem = problem
+        self.anti_noiser = anti_noiser
+        self.max_len = max_len
+        self.max_weight = max(problem.capacities)
+        self.max_dist = sum(map(sum, problem.costs))
+
+    def solve(self, only_one_const, order_const, solver_type = 'cpu'):
+        problem = self.problem
+        dests = problem.dests
+        N = len(dests)
+        costs = problem.costs
+        sources = [problem.source]
+        capacities = problem.capacities
+        weights = problem.weights
+        vehicles = len(problem.capacities)
+
+        neighborhood = [[] for _ in range(len(weights))]
+        for d in dests:
+            indices = np.argpartition(costs[d][:], vehicles*2)[:vehicles*2]
+            neighborhood[d] = indices
+
+        sorted_dests = sorted(dests, reverse=True , key=lambda i: costs[problem.in_nearest_sources[i]][i]) #costs[0][i]
+        sorted_dests = [item for item in sorted_dests if item in dests]
+
+        solver = ClarkWright(problem)
+        solution = solver.solve()
+        clusters = [arr[1:-1] for arr in solution.solution]
+
+        #clusters = TabuSolver.build_initial_solution(vehicles, sorted_dests, neighborhood, weights, capacities)
+
+        if len(clusters) < vehicles:
+            vehicles = len(clusters)
+
         # 4. Calculate starting solution cost
         tabu = []   #dest, cluster_num
         neighbors = [] #dest, cluster_num, clusters
         best_solution = clusters
-        first_sol = VRPSolution(problem, None, None, clusters)
-        check_sol = copy.deepcopy(first_sol)
-        # Adding first and last magazine.
-        for l in check_sol.solution:
-            if len(l) != 0:
-                if problem.first_source:
-                    l.insert(0, problem.in_nearest_sources[l[0]])
-                if problem.last_source:
-                    l.append(problem.out_nearest_sources[l[len(l) - 1]])    
-        best_cost = check_sol.total_cost()
+        best_cost = TabuSolver.calculate_neighbor_cost(problem, clusters)
+        print('starting total_cost =', best_cost)
 
         optimized_routes = list()
         counter_of_last_threshold = 0
@@ -446,14 +471,12 @@ class TabuSolver(VRPSolver):
             inf_neighbors = []
 
             # 6. pre-calc cluster weights
-            vehicle_weights = list()
-            for i in range(vehicles):
-                vehicle_weights.append(0)
-                for dest in clusters[i]:
-                    vehicle_weights[i] += self.problem.weights[dest]
+            vehicle_weights = np.zeros(vehicles)  # Use NumPy array for speed
+            for i, cluster in enumerate(clusters):
+                vehicle_weights[i] = sum([self.problem.weights[dest] for dest in cluster])
                 if vehicle_weights[i] > capacities[i]:
                     feasible = False
-                    infeasible_amount += vehicle_weights[i] - capacities[i]
+                    infeasible_amount += vehicle_weights[i] - capacities[i] 
 
             # 7. create candidate list of neighbors to current solution
             # 8. 0,1 
@@ -477,64 +500,117 @@ class TabuSolver(VRPSolver):
 
             # 9. 1,1
             if True == True:                 
-                swap1 = -1
-                swap2 = -1
-                choices = [index for index, sublist in enumerate(clusters) if len(sublist) > 0]
-                for i in choices:
-                    choices.remove(i)
+                # swap1 = -1
+                # swap2 = -1
+                # choices = [index for index, sublist in enumerate(clusters) if len(sublist) > 0]
+                # for i in choices:
+                #     choices.remove(i)
+                #     for idx_i, swap1 in enumerate(clusters[i]):
+                #         for j in choices:
+                #             for idx_j, swap2 in enumerate(clusters[j]):                                
+                #                 weight1 = vehicle_weights[j] - self.problem.weights[swap2]
+                #                 weight2 = vehicle_weights[i] - self.problem.weights[swap1]                                
+                #                 if set(neighborhood[swap1]).intersection(clusters[j]):                                                                     
+                #                     if set(neighborhood[swap2]).intersection(clusters[i]): 
+                #                         #swap works
+                #                         new_neighbor = copy.deepcopy(clusters)
+                #                         new_neighbor[j][idx_j] = swap1
+                #                         new_neighbor[i][idx_i] = swap2
+                #                         n = Neighbor(new_neighbor, swap1, i, swap2, j)
+                #                         if weight1 + self.problem.weights[swap1] <= capacities[j] and weight2 + self.problem.weights[swap2] <= capacities[i]:
+                #                             neighbors.append(n)
+                #                         else:
+                #                             inf_neighbors.append(n)
+
+                for i in range(len(clusters)):  # Iterate directly through indices
+                    if not clusters[i]:  # Skip empty clusters efficiently
+                        continue
                     for idx_i, swap1 in enumerate(clusters[i]):
-                        for j in choices:
-                            for idx_j, swap2 in enumerate(clusters[j]):                                
-                                weight1 = vehicle_weights[j] - self.problem.weights[swap2]
-                                weight2 = vehicle_weights[i] - self.problem.weights[swap1]
-                                #if weight1 + self.problem.weights[swap1] <= capacities[j] and set(neighborhood[swap1]).intersection(clusters[j]): #any(x in clusters[j] for x in neighborhood[swap1]):
-                                if set(neighborhood[swap1]).intersection(clusters[j]): #any(x in clusters[j] for x in neighborhood[swap1]):                                    
-                                    #if weight2 + self.problem.weights[swap2] <= capacities[i] and set(neighborhood[swap2]).intersection(clusters[i]): #any(x in clusters[i] for x in neighborhood[swap2]):                                    
-                                    if set(neighborhood[swap2]).intersection(clusters[i]): #any(x in clusters[i] for x in neighborhood[swap2]):
-                                        #swap works
-                                        new_neighbor = copy.deepcopy(clusters)
-                                        new_neighbor[j][idx_j] = swap1
-                                        new_neighbor[i][idx_i] = swap2
-                                        n = Neighbor(new_neighbor, swap1, i, swap2, j)
-                                        if weight1 + self.problem.weights[swap1] <= capacities[j] and weight2 + self.problem.weights[swap2] <= capacities[i]:
-                                            neighbors.append(n)
-                                        else:
-                                            inf_neighbors.append(n)
+                        for j in range(i + 1, len(clusters)):  # Avoid redundant checks
+                            if not clusters[j]:
+                                continue
+                            if not (set(neighborhood[swap1]).intersection(clusters[j])):  # Early exit
+                                continue
+                            for idx_j, swap2 in enumerate(clusters[j]):
+                                if not (set(neighborhood[swap2]).intersection(clusters[i])):  # Early exit
+                                    continue
+                                weight1 = vehicle_weights[j] - self.problem.weights[swap2] + self.problem.weights[swap1]
+                                weight2 = vehicle_weights[i] - self.problem.weights[swap1] + self.problem.weights[swap2]
+                                if weight1 <= capacities[j] and weight2 <= capacities[i]:
+                                    new_neighbor = copy.deepcopy(clusters) 
+                                    new_neighbor[j][idx_j], new_neighbor[i][idx_i] = swap1, swap2
+                                    neighbors.append(Neighbor(new_neighbor, swap1, i, swap2, j))
+                                else:
+                                    new_neighbor = copy.deepcopy(clusters)
+                                    new_neighbor[j][idx_j], new_neighbor[i][idx_i] = swap1, swap2
+                                    inf_neighbors.append(Neighbor(new_neighbor, swap1, i, swap2, j)) 
+
 
             # 10. 1,0
             if False == False:                                                
+                # for i in range(vehicles):
+                #     for d in clusters[i]:
+                #         for j in range(vehicles):
+                #             if d not in clusters[j]:
+                #                 #check if clusters[j] has room for d                        
+                #                 #if vehicle_weights[j] + self.problem.weights[d] <= capacities[j] and set(neighborhood[d]).intersection(clusters[j]): #any(x in clusters[i] for x in neighborhood[d]):
+                #                 if set(neighborhood[d]).intersection(clusters[j]): #any(x in clusters[i] for x in neighborhood[d]):                                    
+                #                     #there is room so move d to clusters[j]
+                #                     new_neighbor = copy.deepcopy(clusters)
+                #                     #insert the new location into the route where it adds the least to the cost
+                #                     new_neighbor_cost = self.max_dist
+                #                     new_neighbor_spot = -1
+                #                     options = [new_neighbor[j][x:] + [d] + new_neighbor[j][:x] for x in range(len(new_neighbor[j]),-1,-1)]
+                #                     for k, option in enumerate(options):
+                #                         cost = 0
+                #                         prev = option[0]
+                #                         cost += costs[sources[0]][prev]
+                #                         for dest in option[1:]:
+                #                             cost += costs[prev][dest]
+                #                             prev = dest
+                #                         cost += costs[prev][sources[0]]
+                #                         if cost < new_neighbor_cost:
+                #                             new_neighbor_cost = cost
+                #                             new_neighbor_spot = k
+                #                     if new_neighbor_spot != -1:
+                #                         new_neighbor[i].remove(d)
+                #                         new_neighbor[j] = list(options[new_neighbor_spot])
+                #                         n = Neighbor(new_neighbor, d, i)
+                #                         if vehicle_weights[j] + self.problem.weights[d] <= capacities[j]:
+                #                             neighbors.append(n)
+                #                         else:
+                #                             inf_neighbors.append(n)
+
                 for i in range(vehicles):
                     for d in clusters[i]:
                         for j in range(vehicles):
-                            if d not in clusters[j]:
-                                #check if clusters[j] has room for d                        
-                                #if vehicle_weights[j] + self.problem.weights[d] <= capacities[j] and set(neighborhood[d]).intersection(clusters[j]): #any(x in clusters[i] for x in neighborhood[d]):
-                                if set(neighborhood[d]).intersection(clusters[j]): #any(x in clusters[i] for x in neighborhood[d]):                                    
-                                    #there is room so move d to clusters[j]
-                                    new_neighbor = copy.deepcopy(clusters)
-                                    #insert the new location into the route where it adds the least to the cost
-                                    new_neighbor_cost = self.max_dist
-                                    new_neighbor_spot = -1
-                                    options = [new_neighbor[j][x:] + [d] + new_neighbor[j][:x] for x in range(len(new_neighbor[j]),-1,-1)]
-                                    for k, option in enumerate(options):
-                                        cost = 0
-                                        prev = option[0]
-                                        cost += costs[sources[0]][prev]
-                                        for dest in option[1:]:
-                                            cost += costs[prev][dest]
-                                            prev = dest
-                                        cost += costs[prev][sources[0]]
-                                        if cost < new_neighbor_cost:
-                                            new_neighbor_cost = cost
-                                            new_neighbor_spot = k
-                                    if new_neighbor_spot != -1:
+                            if i != j and d not in clusters[j] and set(neighborhood[d]).intersection(clusters[j]):
+                                # Found a potential move: delivery 'd' from cluster 'i' to 'j'
+                                # Check capacity constraint first for efficiency
+                                if vehicle_weights[j] + self.problem.weights[d] <= capacities[j]:
+                                    # Calculate the cost of inserting 'd' into all possible positions in cluster 'j'
+                                    best_found_cost, best_found_spot = float('inf'), None
+                                    for k in range(len(clusters[j]) + 1):
+                                        new_route = clusters[j][:k] + [d] + clusters[j][k:]
+                                        cost = TabuSolver.calculate_route_cost(new_route, costs, sources)
+                                        if cost < best_found_cost:
+                                            best_found_cost, best_found_spot = cost, k
+
+                                    # If a valid insertion point is found, create the neighbor solution
+                                    if best_found_spot is not None:
+                                        new_neighbor = copy.deepcopy(clusters)
                                         new_neighbor[i].remove(d)
-                                        new_neighbor[j] = list(options[new_neighbor_spot])
-                                        n = Neighbor(new_neighbor, d, i)
-                                        if vehicle_weights[j] + self.problem.weights[d] <= capacities[j]:
-                                            neighbors.append(n)
-                                        else:
-                                            inf_neighbors.append(n)
+                                        new_neighbor[j] = new_neighbor[j][:best_found_spot] + [d] + new_neighbor[j][best_found_spot:]
+                                        n = Neighbor(new_neighbor, d, i)  # Assuming Neighbor class exists
+                                        neighbors.append(n)
+                                else:
+                                    # Capacity constraint violated, add to inf_neighbors
+                                    new_neighbor = copy.deepcopy(clusters)
+                                    new_neighbor[i].remove(d)
+                                    new_neighbor[j].append(d)  # Append to the end for simplicity
+                                    n = Neighbor(new_neighbor, d, i)
+                                    inf_neighbors.append(n)
+
 
             current_best_neighbor = []
             current_best_cost = self.max_dist
@@ -548,17 +624,7 @@ class TabuSolver(VRPSolver):
             if feasible == True:
                 #find best feasible candidate                
                 for n in neighbors:
-                    #calcluate neighbor cost            
-                    sol = VRPSolution(problem, None, None, n.clusters)
-                    check_sol = copy.deepcopy(sol)
-                    # Adding first and last magazine.
-                    for l in check_sol.solution:
-                        if len(l) != 0:
-                            if problem.first_source:
-                                l.insert(0, problem.in_nearest_sources[l[0]])
-                            if problem.last_source:
-                                l.append(problem.out_nearest_sources[l[len(l) - 1]])    
-                    cost = check_sol.total_cost()
+                    cost = TabuSolver.calculate_neighbor_cost(problem, n.clusters)
                     if cost < selected_neighbor_cost:
                         #keep track of overall best neighbor
                         if cost < current_best_cost:
@@ -579,17 +645,7 @@ class TabuSolver(VRPSolver):
 
                 #find best infeasible candidate                                         
                 for n in inf_neighbors:
-                    #calcluate neighbor cost            
-                    sol = VRPSolution(problem, None, None, n.clusters)
-                    check_sol = copy.deepcopy(sol)
-                    # Adding first and last magazine.
-                    for l in check_sol.solution:
-                        if len(l) != 0:
-                            if problem.first_source:
-                                l.insert(0, problem.in_nearest_sources[l[0]])
-                            if problem.last_source:
-                                l.append(problem.out_nearest_sources[l[len(l) - 1]])    
-                    cost = check_sol.total_cost()
+                    cost = TabuSolver.calculate_neighbor_cost(problem, n.clusters)
                     if cost < selected_inf_neighbor_cost:
                         #check if candidate is tabu
                         is_tabu = False
@@ -625,22 +681,11 @@ class TabuSolver(VRPSolver):
                         if current_weights[i] > capacities[i]:
                             current_infeasible_amount += current_weights[i] - capacities[i]
                     if current_infeasible_amount <= best_amount:
-                        #calcluate neighbor cost            
-                        sol = VRPSolution(problem, None, None, n.clusters)
-                        check_sol = copy.deepcopy(sol)
-                        # Adding first and last magazine.
-                        for l in check_sol.solution:
-                            if len(l) != 0:
-                                if problem.first_source:
-                                    l.insert(0, problem.in_nearest_sources[l[0]])
-                                if problem.last_source:
-                                    l.append(problem.out_nearest_sources[l[len(l) - 1]])
-                        cost = check_sol.total_cost()
+                        cost = TabuSolver.calculate_neighbor_cost(problem, n.clusters)
                         if cost < current_best_cost:
                             current_best_neighbor = n
                             current_best_cost = cost
                             current_best_move = n.type
-                        #if cost < selected_neighbor_cost:
                         #check if candidate is tabu
                         is_tabu = False
                         for move in tabu:
@@ -665,18 +710,6 @@ class TabuSolver(VRPSolver):
                         if current_weights[i] > capacities[i]:
                             inf_infeasible_amount += current_weights[i] - capacities[i]
                     if inf_infeasible_amount <= best_inf_amount:
-                        #calcluate neighbor cost            
-                        sol = VRPSolution(problem, None, None, n.clusters)
-                        check_sol = copy.deepcopy(sol)
-                        # Adding first and last magazine.
-                        for l in check_sol.solution:
-                            if len(l) != 0:
-                                if problem.first_source:
-                                    l.insert(0, problem.in_nearest_sources[l[0]])
-                                if problem.last_source:
-                                    l.append(problem.out_nearest_sources[l[len(l) - 1]])
-                        cost = check_sol.total_cost()
-                        #if cost < selected_inf_neighbor_cost:
                         #check if candidate is tabu
                         is_tabu = False
                         for move in tabu:
@@ -713,9 +746,10 @@ class TabuSolver(VRPSolver):
                         largest_change = best_cost - current_best_cost
                     #ignore tabu and use it anyways
                     best_cost = current_best_cost
-                    print('total_cost =', best_cost, 'move=', current_best_move)
+                    print('total_cost =', best_cost, 'move=', current_best_move, 'counter= ', counter)
                     best_solution = copy.deepcopy(current_best_neighbor.clusters)
                     clusters = copy.deepcopy(current_best_neighbor.clusters)
+                    tabu = []
                     #intensification_counter = 0
                     counter_of_last_threshold = counter
                     counter_of_last_best = counter
@@ -777,7 +811,7 @@ class TabuSolver(VRPSolver):
                         indices = np.argpartition(costs[d][:], vehicles)[:vehicles]
                         neighborhood[d] = indices          
 
-            if counter - counter_of_last_best == 2000:      
+            if counter - counter_of_last_best == 200:      
                 print('Quantum Go', counter)              
                 clusters = copy.deepcopy(best_solution) 
                 routes = list()
@@ -802,17 +836,7 @@ class TabuSolver(VRPSolver):
                         route = cluster
                     routes.append(route)
                 clusters = routes
-                #calcluate optimized solution cost            
-                sol = VRPSolution(problem, None, None, routes)
-                check_sol = copy.deepcopy(sol)
-                # Adding first and last magazine.
-                for l in check_sol.solution:
-                    if len(l) != 0:
-                        if problem.first_source:
-                            l.insert(0, problem.in_nearest_sources[l[0]])
-                        if problem.last_source:
-                            l.append(problem.out_nearest_sources[l[len(l) - 1]])    
-                cost = check_sol.total_cost()
+                cost = TabuSolver.calculate_neighbor_cost(problem, routes)
                 if cost < best_cost:
                     best_solution = copy.deepcopy(clusters)
                     best_cost = cost
@@ -959,3 +983,184 @@ class SolutionPartitioningSolver(VRPSolver):
 
         sol = solution.solution[0]
         return self._divide_solution_random(sol)
+
+class ClarkWright(VRPSolver):
+    def __init__(self, problem):
+        self.problem = problem
+
+    def which_route(self, link, routes):
+        node_sel = []
+        i_route = [-1, -1]
+        count_in = 0
+
+        for route in routes:
+            for node in link:
+                try:
+                    route.index(node)
+                    i_route[count_in] = routes.index(route)
+                    node_sel.append(node)
+                    count_in += 1
+                except:
+                    pass
+
+        overlap = 1 if i_route[0] == i_route[1] else 0
+
+        return node_sel, count_in, i_route, overlap
+
+    def merge(self, route0, route1, link):
+        if route0.index(link[0]) != (len(route0) - 1):
+            route0.reverse()
+
+        if route1.index(link[1]) != 0:
+            route1.reverse()
+
+        return route0 + route1
+
+    def interior(self, node, route):
+        try:
+            i = route.index(node)
+            return 0 < i < len(route) - 1
+        except ValueError:
+            return False
+        
+    # sum up to obtain the total passengers belonging to a route
+    def sum_cap(self, route):
+        sum_cap = 0
+        for node in route:
+            sum_cap += self.problem.weights[node]
+        return sum_cap
+
+    def solve(self):
+        problem = self.problem
+        num_customers = len(problem.dests)
+        nodes = problem.dests
+        capacities = problem.capacities
+        costs = problem.costs
+
+        # Calculate savings matrix
+        savings = np.zeros((num_customers, num_customers))
+        for i in range(num_customers):
+            for j in range(i+1, num_customers):
+                savings[i][j] = costs[0][i+1] + costs[0][j+1] - costs[i+1][j+1]
+                
+        # Sort savings matrix in decreasing order
+        savings_flat = [(i, j, savings[i][j]) for i in range(num_customers) for j in range(i+1, num_customers)]
+        savings_flat = [(i+1, j+1, savings[i][j]) for i in range(num_customers) for j in range(i+1, num_customers)]
+        savings_flat_sorted = sorted(savings_flat, key=lambda x: x[2], reverse=True)
+
+        savings_flat_sorted = [[node1, node2] for node1, node2, savings in savings_flat_sorted]
+        for item in savings_flat_sorted:
+            if 0 in item:
+                print(item)
+
+        
+
+
+        # Create empty routes
+        routes = []
+
+        # Get a list of nodes, excluding the depot
+        node_list = list(nodes)
+
+        #if there are any remaining customers to be served
+        remaining = True
+        
+        for link in savings_flat_sorted:
+            print(link)
+            if remaining:
+                
+                node_sel, num_in, i_route, overlap = self.which_route(link, routes)
+                 # condition a. Either, neither i nor j have already been assigned to a route, 
+                # ...in which case a new route is initiated including both i and j.
+                if num_in == 0:
+                    if self.sum_cap(link) <= capacities[0]:
+                        routes.append(link)
+                        node_list.remove(link[0])
+                        node_list.remove(link[1])
+                        print('\t','Link ', link, ' fulfills criteria a), so it is created as a new route')
+                    else:
+                        print('\t','Though Link ', link, ' fulfills criteria a), it exceeds maximum load, so skip this link.')
+                        
+                # condition b. Or, exactly one of the two nodes (i or j) has already been included 
+                # ...in an existing route and that point is not interior to that route 
+                # ...(a point is interior to a route if it is not adjacent to the depot D in the order of traversal of nodes), 
+                # ...in which case the link (i, j) is added to that same route.    
+                elif num_in == 1:
+                    n_sel = node_sel[0]
+                    i_rt = i_route[0]
+                    position = routes[i_rt].index(n_sel)
+                    link_temp = link.copy()
+                    link_temp.remove(n_sel)
+                    node = link_temp[0]
+
+                    cond1 = (not self.interior(n_sel, routes[i_rt]))
+                    cond2 = (self.sum_cap(routes[i_rt] + [node]) <= capacities[0])
+
+                    if cond1:
+                        if cond2:
+                            print('\t','Link ', link, ' fulfills criteria b), so a new node is added to route ', routes[i_rt], '.')
+                            if position == 0:
+                                routes[i_rt].insert(0, node)
+                            else:
+                                routes[i_rt].append(node)
+                            node_list.remove(node)
+                        else:
+                            print('\t','Though Link ', link, ' fulfills criteria b), it exceeds maximum load, so skip this link.')
+                            continue
+                    else:
+                        print('\t','For Link ', link, ', node ', n_sel, ' is interior to route ', routes[i_rt], ', so skip this link')
+                        continue
+                    
+                # condition c. Or, both i and j have already been included in two different existing routes 
+                # ...and neither point is interior to its route, in which case the two routes are merged.        
+                else:
+                    if overlap == 0:
+                        cond1 = (not self.interior(node_sel[0], routes[i_route[0]]))
+                        cond2 = (not self.interior(node_sel[1], routes[i_route[1]]))
+                        cond3 = (self.sum_cap(routes[i_route[0]] + routes[i_route[1]]) <= capacities[0])
+
+                        if cond1 and cond2:
+                            if cond3:
+                                route_temp = self.merge(routes[i_route[0]], routes[i_route[1]], node_sel)
+                                temp1 = routes[i_route[0]]
+                                temp2 = routes[i_route[1]]
+                                routes.remove(temp1)
+                                routes.remove(temp2)
+                                routes.append(route_temp)
+                                try:
+                                    node_list.remove(link[0])
+                                    node_list.remove(link[1])
+                                except:
+                                    #print('\t', f"Node {link[0]} or {link[1]} has been removed in a previous step.")
+                                    pass
+                                print('\t','Link ', link, ' fulfills criteria c), so route ', temp1, ' and route ', temp2, ' are merged')
+                            else:
+                                print('\t','Though Link ', link, ' fulfills criteria c), it exceeds maximum load, so skip this link.')
+                                continue
+                        else:
+                            print('\t','For link ', link, ', Two nodes are found in two different routes, but not all the nodes fulfill interior requirement, so skip this link')
+                            continue
+                    else:
+                        print('\t','Link ', link, ' is already included in the routes')
+                        continue
+                    
+                for route in routes: 
+                    print('\t','route: ', route, ' with load ', self.sum_cap(route))
+            else:
+                print('-------')
+                print('All nodes are included in the routes, algorithm closed')
+                break
+            
+            remaining = bool(len(node_list) > 0)
+
+        # check if any node is left, assign to a unique route
+        for node_o in node_list:
+            routes.append([node_o])
+
+        # add depot to the routes
+        for route in routes:
+            route.insert(0,0)
+            route.append(0)
+
+
+        return VRPSolution(problem, None, None, routes)
