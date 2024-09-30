@@ -299,8 +299,11 @@ class Tabu_Move:
         self.move1 = move1
         self.location2 = location2
         self.move2 = move2
-        #self.count = random.randint(5,10)
-        self.count = random.randint(0.4*n,0.6*n)# + 5
+        try:
+            self.count = random.randint(0.4*n,0.6*n)
+        except:
+            n += 1
+            self.count = random.randint(0.4*n,0.6*n)
 
 class Neighbor:
     def __init__(self, clusters, move1, location1, move2 = 0, location2 = 0):
@@ -317,7 +320,7 @@ class Neighbor:
             self.type = "1,1"
 
 class TabuSolver(VRPSolver):
-    def check_elements_match(array1, array2):
+    def check_elements_match(self, array1, array2):
         if len(array1) != len(array2):
             return False
         for element in array1:
@@ -325,7 +328,7 @@ class TabuSolver(VRPSolver):
                 return False
         return True 
 
-    def calculate_neighbor_cost(problem, clusters):
+    def calculate_neighbor_cost(self, problem, clusters):
         routes = copy.deepcopy(clusters)
         check_sol = VRPSolution(problem, None, None, routes)
         # Adding first and last magazine.
@@ -337,7 +340,7 @@ class TabuSolver(VRPSolver):
                     rte.append(problem.out_nearest_sources[rte[-1]])    
         return check_sol.total_cost()
 
-    def calculate_route_cost(route, costs, sources):
+    def calculate_route_cost(self, route, costs, sources):
         """Calculates the total cost of a given route."""
         total_cost = 0
         prev = sources[0]  # Assuming single source for simplicity
@@ -347,7 +350,7 @@ class TabuSolver(VRPSolver):
         total_cost += costs[prev][sources[0]]  # Return to source
         return total_cost
 
-    def build_initial_solution(vehicles, sorted_dests, neighborhood, weights, capacities):
+    def build_initial_solution(self, vehicles, sorted_dests, neighborhood, weights, capacities):
         # 1. build initial solution
         clusters = list()
         for i in range(vehicles):
@@ -405,6 +408,15 @@ class TabuSolver(VRPSolver):
                         break 
         return clusters
 
+    def is_tabu(self, tabu, n):
+        is_tabu = False                            
+        for move in tabu:
+            if move.move1 == n.move1 and move.location1 == n.location1 and move.move2 == n.move2 and move.location2 == n.location2:
+                #candidate is tabu
+                is_tabu = True
+                break
+        return is_tabu
+
     def __init__(self, problem, max_len = 10, anti_noiser = True):
         self.problem = problem
         self.anti_noiser = anti_noiser
@@ -422,6 +434,9 @@ class TabuSolver(VRPSolver):
         weights = problem.weights
         vehicles = len(problem.capacities)
 
+        # 0. Create initial neighborhood for each destination
+        # The initial neighborhood is 2 times the number of vehicles destinations
+        # When we do swaps below we only swap locations that are in the same neighborhood
         neighborhood = [[] for _ in range(len(weights))]
         for d in dests:
             indices = np.argpartition(costs[d][:], vehicles*2)[:vehicles*2]
@@ -430,12 +445,18 @@ class TabuSolver(VRPSolver):
         sorted_dests = sorted(dests, reverse=True , key=lambda i: costs[problem.in_nearest_sources[i]][i]) #costs[0][i]
         sorted_dests = [item for item in sorted_dests if item in dests]
 
+        #Generate a starting solution for Tabu Search (1, 2 3)
         solver = ClarkWright(problem)
         solution = solver.solve()
         clusters = [arr[1:-1] for arr in solution.solution]
 
-        #clusters = TabuSolver.build_initial_solution(vehicles, sorted_dests, neighborhood, weights, capacities)
+        #solver = SolutionPartitioningSolver(problem)
+        #solution = solver.solve()
+        #clusters = [arr[1:-1] for arr in solution.solution]
 
+        #clusters = self.build_initial_solution(vehicles, sorted_dests, neighborhood, weights, capacities)
+
+        #Check if the starting solution used fewer vehicles than the problem file specifices
         if len(clusters) < vehicles:
             vehicles = len(clusters)
 
@@ -443,7 +464,7 @@ class TabuSolver(VRPSolver):
         tabu = []   #dest, cluster_num
         neighbors = [] #dest, cluster_num, clusters
         best_solution = clusters
-        best_cost = TabuSolver.calculate_neighbor_cost(problem, clusters)
+        best_cost = self.calculate_neighbor_cost(problem, clusters)
         print('starting total_cost =', best_cost)
 
         optimized_routes = list()
@@ -478,7 +499,7 @@ class TabuSolver(VRPSolver):
                     feasible = False
                     infeasible_amount += vehicle_weights[i] - capacities[i] 
 
-            # 7. create candidate list of neighbors to current solution
+            # 7. create candidate list of neighbors to current solution (8, 9, 10)
             # 8. 0,1 
             if diversification == False:                
                 for i in range(vehicles):
@@ -500,28 +521,6 @@ class TabuSolver(VRPSolver):
 
             # 9. 1,1
             if True == True:                 
-                # swap1 = -1
-                # swap2 = -1
-                # choices = [index for index, sublist in enumerate(clusters) if len(sublist) > 0]
-                # for i in choices:
-                #     choices.remove(i)
-                #     for idx_i, swap1 in enumerate(clusters[i]):
-                #         for j in choices:
-                #             for idx_j, swap2 in enumerate(clusters[j]):                                
-                #                 weight1 = vehicle_weights[j] - self.problem.weights[swap2]
-                #                 weight2 = vehicle_weights[i] - self.problem.weights[swap1]                                
-                #                 if set(neighborhood[swap1]).intersection(clusters[j]):                                                                     
-                #                     if set(neighborhood[swap2]).intersection(clusters[i]): 
-                #                         #swap works
-                #                         new_neighbor = copy.deepcopy(clusters)
-                #                         new_neighbor[j][idx_j] = swap1
-                #                         new_neighbor[i][idx_i] = swap2
-                #                         n = Neighbor(new_neighbor, swap1, i, swap2, j)
-                #                         if weight1 + self.problem.weights[swap1] <= capacities[j] and weight2 + self.problem.weights[swap2] <= capacities[i]:
-                #                             neighbors.append(n)
-                #                         else:
-                #                             inf_neighbors.append(n)
-
                 for i in range(len(clusters)):  # Iterate directly through indices
                     if not clusters[i]:  # Skip empty clusters efficiently
                         continue
@@ -548,39 +547,6 @@ class TabuSolver(VRPSolver):
 
             # 10. 1,0
             if False == False:                                                
-                # for i in range(vehicles):
-                #     for d in clusters[i]:
-                #         for j in range(vehicles):
-                #             if d not in clusters[j]:
-                #                 #check if clusters[j] has room for d                        
-                #                 #if vehicle_weights[j] + self.problem.weights[d] <= capacities[j] and set(neighborhood[d]).intersection(clusters[j]): #any(x in clusters[i] for x in neighborhood[d]):
-                #                 if set(neighborhood[d]).intersection(clusters[j]): #any(x in clusters[i] for x in neighborhood[d]):                                    
-                #                     #there is room so move d to clusters[j]
-                #                     new_neighbor = copy.deepcopy(clusters)
-                #                     #insert the new location into the route where it adds the least to the cost
-                #                     new_neighbor_cost = self.max_dist
-                #                     new_neighbor_spot = -1
-                #                     options = [new_neighbor[j][x:] + [d] + new_neighbor[j][:x] for x in range(len(new_neighbor[j]),-1,-1)]
-                #                     for k, option in enumerate(options):
-                #                         cost = 0
-                #                         prev = option[0]
-                #                         cost += costs[sources[0]][prev]
-                #                         for dest in option[1:]:
-                #                             cost += costs[prev][dest]
-                #                             prev = dest
-                #                         cost += costs[prev][sources[0]]
-                #                         if cost < new_neighbor_cost:
-                #                             new_neighbor_cost = cost
-                #                             new_neighbor_spot = k
-                #                     if new_neighbor_spot != -1:
-                #                         new_neighbor[i].remove(d)
-                #                         new_neighbor[j] = list(options[new_neighbor_spot])
-                #                         n = Neighbor(new_neighbor, d, i)
-                #                         if vehicle_weights[j] + self.problem.weights[d] <= capacities[j]:
-                #                             neighbors.append(n)
-                #                         else:
-                #                             inf_neighbors.append(n)
-
                 for i in range(vehicles):
                     for d in clusters[i]:
                         for j in range(vehicles):
@@ -592,7 +558,7 @@ class TabuSolver(VRPSolver):
                                     best_found_cost, best_found_spot = float('inf'), None
                                     for k in range(len(clusters[j]) + 1):
                                         new_route = clusters[j][:k] + [d] + clusters[j][k:]
-                                        cost = TabuSolver.calculate_route_cost(new_route, costs, sources)
+                                        cost = self.calculate_route_cost(new_route, costs, sources)
                                         if cost < best_found_cost:
                                             best_found_cost, best_found_spot = cost, k
 
@@ -620,11 +586,12 @@ class TabuSolver(VRPSolver):
             selected_inf_neighbor = []
             selected_inf_neighbor_cost = self.max_dist
 
-            # 11. previous solution was feasible
+            # 11. Strategic Oscillation (12, 13)
+            # 12. previous solution was feasible
             if feasible == True:
-                #find best feasible candidate                
+                #find best feasible candidate               
                 for n in neighbors:
-                    cost = TabuSolver.calculate_neighbor_cost(problem, n.clusters)
+                    cost = self.calculate_neighbor_cost(problem, n.clusters)
                     if cost < selected_neighbor_cost:
                         #keep track of overall best neighbor
                         if cost < current_best_cost:
@@ -632,32 +599,18 @@ class TabuSolver(VRPSolver):
                             current_best_cost = cost
                             current_best_move = n.type
                         #check if candidate is tabu
-                        is_tabu = False
-                        for move in tabu:
-                            if move.move1 == n.move1 and move.location1 == n.location1 and move.move2 == n.move2 and move.location2 == n.location2:
-                                #candidate is tabu
-                                is_tabu = True
-                                break
-                        if is_tabu is False:
+                        if self.is_tabu(tabu, n) is False:
                             #keep track of best non-tabu neighbor
                             selected_neighbor = n
                             selected_neighbor_cost = cost
 
                 #find best infeasible candidate                                         
                 for n in inf_neighbors:
-                    cost = TabuSolver.calculate_neighbor_cost(problem, n.clusters)
-                    if cost < selected_inf_neighbor_cost:
-                        #check if candidate is tabu
-                        is_tabu = False
-                        for move in tabu:
-                            if move.move1 == n.move1 and move.location1 == n.location1 and move.move2 == n.move2 and move.location2 == n.location2:
-                                #candidate is tabu
-                                is_tabu = True
-                                break
-                        if is_tabu is False:
-                            #keep track of best non-tabu neighbor
-                            selected_inf_neighbor = n
-                            selected_inf_neighbor_cost = cost
+                    cost = self.calculate_neighbor_cost(problem, n.clusters)
+                    if cost < selected_inf_neighbor_cost and self.is_tabu(tabu, n) is False:
+                        #keep track of best non-tabu neighbor
+                        selected_inf_neighbor = n
+                        selected_inf_neighbor_cost = cost
 
                 #pick the best neighbor
                 #if selected_neighbor_cost > previous_cost:
@@ -665,7 +618,7 @@ class TabuSolver(VRPSolver):
                     selected_neighbor = selected_inf_neighbor 
                     selected_neighbor_cost = selected_inf_neighbor_cost 
 
-            # 12. previous solution was NOT feasible                  
+            # 13. previous solution was NOT feasible                
             else:
                 #find best feasible candidate
                 current_best_cost = self.max_dist
@@ -681,19 +634,13 @@ class TabuSolver(VRPSolver):
                         if current_weights[i] > capacities[i]:
                             current_infeasible_amount += current_weights[i] - capacities[i]
                     if current_infeasible_amount <= best_amount:
-                        cost = TabuSolver.calculate_neighbor_cost(problem, n.clusters)
+                        cost = self.calculate_neighbor_cost(problem, n.clusters)
                         if cost < current_best_cost:
                             current_best_neighbor = n
                             current_best_cost = cost
                             current_best_move = n.type
                         #check if candidate is tabu
-                        is_tabu = False
-                        for move in tabu:
-                            if move.move1 == n.move1 and move.location1 == n.location1 and move.move2 == n.move2 and move.location2 == n.location2:
-                                #candidate is tabu
-                                is_tabu = True
-                                break
-                        if is_tabu is False:
+                        if self.is_tabu(tabu, n) is False:                    
                             #keep track of best non-tabu neighbor
                             selected_neighbor = n
                             selected_neighbor_cost = cost
@@ -709,19 +656,11 @@ class TabuSolver(VRPSolver):
                             current_weights[i] += self.problem.weights[dest]
                         if current_weights[i] > capacities[i]:
                             inf_infeasible_amount += current_weights[i] - capacities[i]
-                    if inf_infeasible_amount <= best_inf_amount:
-                        #check if candidate is tabu
-                        is_tabu = False
-                        for move in tabu:
-                            if move.move1 == n.move1 and move.location1 == n.location1 and move.move2 == n.move2 and move.location2 == n.location2:
-                                #candidate is tabu
-                                is_tabu = True
-                                break
-                        if is_tabu is False:
-                            #keep track of best non-tabu neighbor
-                            selected_inf_neighbor = n
-                            selected_inf_neighbor_cost = cost
-                            best_inf_amount = inf_infeasible_amount
+                    if inf_infeasible_amount <= best_inf_amount and self.is_tabu(tabu, n) is False:                
+                        #keep track of best non-tabu neighbor
+                        selected_inf_neighbor = n
+                        selected_inf_neighbor_cost = cost
+                        best_inf_amount = inf_infeasible_amount
 
                 #pick the best neighbor
                 if best_inf_amount < best_amount:
@@ -740,26 +679,20 @@ class TabuSolver(VRPSolver):
                         vehicle_weights[i] += self.problem.weights[dest]
                     if vehicle_weights[i] > capacities[i]:
                         current_best_feasible = False
+                        break
                 #feasible, so lets use it
                 if current_best_feasible == True:
                     if best_cost - current_best_cost > largest_change:
                         largest_change = best_cost - current_best_cost
-                    #ignore tabu and use it anyways
+                        #ignore tabu and use it anyways
                     best_cost = current_best_cost
                     print('total_cost =', best_cost, 'move=', current_best_move, 'counter= ', counter)
                     best_solution = copy.deepcopy(current_best_neighbor.clusters)
                     clusters = copy.deepcopy(current_best_neighbor.clusters)
                     tabu = []
-                    #intensification_counter = 0
                     counter_of_last_threshold = counter
                     counter_of_last_best = counter
-                    is_tabu = False
-                    for move in tabu:
-                        if move.move1 == current_best_neighbor.move1 and move.location1 == current_best_neighbor.location1 and move.move2 == current_best_neighbor.move2 and move.location2 == current_best_neighbor.location2:
-                            #candidate is tabu
-                            is_tabu = True
-                            break
-                    if is_tabu == False:
+                    if self.is_tabu(tabu, current_best_neighbor) == False:
                         tabu.append(Tabu_Move(len(dests), current_best_neighbor.move1, current_best_neighbor.location1, current_best_neighbor.move2, current_best_neighbor.location2))
                     frequency[(current_best_neighbor.move1, current_best_neighbor.location1)] += 1
                     if current_best_neighbor.move2 != 0:
@@ -774,7 +707,8 @@ class TabuSolver(VRPSolver):
                 if selected_neighbor.move2 != 0:
                     frequency[(selected_neighbor.move2, selected_neighbor.location2)] += 1
 
-            # 16. threshold is reached so we toggle diversification
+            # 16. Toggle Diversification and do Intensification
+            # threshold is reached so we toggle on diversification
             if counter - counter_of_last_threshold == last_threshold:   
                 print('counter', counter, 'cbc', current_best_cost, 'snc', selected_neighbor_cost, 'move', current_best_move, "feasible", feasible)
                 if intensification_counter == 2: #diversification
@@ -788,11 +722,10 @@ class TabuSolver(VRPSolver):
                     for d in dests:
                         indices = np.argpartition(costs[d][:], int(vehicles * 2))[:int(vehicles * 2)]
                         neighborhood[d] = indices
-                elif intensification_counter == 1 and diversification_counter % 10 == 0: #intensification_counter == 1 and diversification_counter == 10: #intensification
+                elif intensification_counter == 1 and diversification_counter % 10 == 0: #intensification
                     print('intensification', counter)
                     print('div counter ', diversification_counter)
-                    tabu = []   #dest, cluster_num
-                    #clusters = copy.deepcopy(best_solution) 
+                    tabu = []  
                     counter_of_last_threshold = counter
                     if diversification == True:
                         intensification_counter = 0
@@ -800,7 +733,7 @@ class TabuSolver(VRPSolver):
                     else:
                         intensification_counter +=1
                         last_threshold = random.randint(int(0.6 * N), int(1.1 * N))
-                else: #swap mode
+                else: #threshold is reached so we toggle off diversification
                     print('diversification off', counter)                  
                     counter_of_last_threshold = counter
                     last_threshold = random.randint(int(0.6 * N), int(1.1 * N))
@@ -811,7 +744,8 @@ class TabuSolver(VRPSolver):
                         indices = np.argpartition(costs[d][:], vehicles)[:vehicles]
                         neighborhood[d] = indices          
 
-            if counter - counter_of_last_best == 200:      
+            # 17. Sparse Quantum Resequencing
+            if counter - counter_of_last_best == 2000:      
                 print('Quantum Go', counter)              
                 clusters = copy.deepcopy(best_solution) 
                 routes = list()
@@ -819,12 +753,11 @@ class TabuSolver(VRPSolver):
                     if len(cluster) > 1:
                         found = False
                         for rte in optimized_routes: #check if we have already sequenced this route
-                            if TabuSolver.check_elements_match(cluster, rte):
+                            if self.check_elements_match(cluster, rte):
                                 route = rte
                                 found = True
                         if found == False:
                             new_problem = VRPProblem(sources, costs, [capacities[0]], cluster, weights, first_source = True, last_source = True)
-                            #new_problem = VRPProblem(sources, costs, [capacities[0]], cluster, weights, first_source = False, last_source = False)
                             solver = FullQuboSolver(new_problem)
                             print('0 =', cluster)
                             route = solver.solve(only_one_const, order_const, solver_type = solver_type).solution[0]                                
@@ -836,26 +769,26 @@ class TabuSolver(VRPSolver):
                         route = cluster
                     routes.append(route)
                 clusters = routes
-                cost = TabuSolver.calculate_neighbor_cost(problem, routes)
+                cost = self.calculate_neighbor_cost(problem, routes)
                 if cost < best_cost:
                     best_solution = copy.deepcopy(clusters)
                     best_cost = cost
                     counter_of_last_best = counter
                     print('quantum found total_cost =', best_cost)
 
-            #update tabu list
+            # 18. update tabu list
             for move in tabu:
                 move.count -= 1
                 if move.count == 0:
                     tabu.remove(move)    
 
-            #update iterator and loop back
+            # 19. update iterator and loop back
             counter += 1
-            if counter - counter_of_last_best == 5000:
+            if counter - counter_of_last_best == 5000: #stop if its been XXXX moves since we found a new best
                 print('Best solution was found on counter =', counter_of_last_best)
                 ready_to_stop = True
 
-        # Adding first and last magazine.
+        # 20. Adding first and last magazine and return best found solution.
         for l in best_solution:
             if len(l) != 0:
                 if problem.first_source:
@@ -865,6 +798,8 @@ class TabuSolver(VRPSolver):
 
         solution = VRPSolution(self.problem, None, None, best_solution)
         return solution
+
+
 
 
 

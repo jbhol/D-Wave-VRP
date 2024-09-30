@@ -21,7 +21,7 @@ if __name__ == '__main__':
     only_one_const = 10000000.
     order_const = 1.
 
-    for t in ['cmt5.vrp']:  #'cmt4.vrp' 'example_small2'
+    for t in ['cmt2.vrp']:  #'cmt4.vrp' 'example_small2'
         print("Test : ", t)
 
         # Reading problem from file.
