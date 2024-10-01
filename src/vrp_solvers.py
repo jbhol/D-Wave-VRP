@@ -417,6 +417,13 @@ class TabuSolver(VRPSolver):
                 break
         return is_tabu
 
+    def update_neighborhood(self, dests, costs, weights, size):
+        neighborhood = [[] for _ in range(len(weights))]
+        for d in dests:
+            indices = np.argpartition(costs[d][:], int(size))[:int(size)]
+            neighborhood[d] = indices
+        return neighborhood
+
     def __init__(self, problem, max_len = 10, anti_noiser = True):
         self.problem = problem
         self.anti_noiser = anti_noiser
@@ -437,10 +444,7 @@ class TabuSolver(VRPSolver):
         # 0. Create initial neighborhood for each destination
         # The initial neighborhood is 2 times the number of vehicles destinations
         # When we do swaps below we only swap locations that are in the same neighborhood
-        neighborhood = [[] for _ in range(len(weights))]
-        for d in dests:
-            indices = np.argpartition(costs[d][:], vehicles*2)[:vehicles*2]
-            neighborhood[d] = indices
+        neighborhood = self.update_neighborhood(dests, costs, weights, vehicles * 2)
 
         sorted_dests = sorted(dests, reverse=True , key=lambda i: costs[problem.in_nearest_sources[i]][i]) #costs[0][i]
         sorted_dests = [item for item in sorted_dests if item in dests]
@@ -461,23 +465,23 @@ class TabuSolver(VRPSolver):
             vehicles = len(clusters)
 
         # 4. Calculate starting solution cost
-        tabu = []   #dest, cluster_num
-        neighbors = [] #dest, cluster_num, clusters
-        best_solution = clusters
-        best_cost = self.calculate_neighbor_cost(problem, clusters)
+        tabu = []   #the tabu list, holds tabu moves
+        neighbors = [] #the neighbor list, holds all the neighboring moves from the current solution found by local search
+        best_solution = clusters    #holds all the routes for the best solution found so far
+        best_cost = self.calculate_neighbor_cost(problem, clusters) #the cost of the best solution found so far
         print('starting total_cost =', best_cost)
 
-        optimized_routes = list()
-        counter_of_last_threshold = 0
-        last_threshold = random.randint(int(0.6 * N), int(1.1 * N))
-        counter_of_last_best = 0
-        intensification_counter = 2
-        diversification = True
-        diversification_counter = 0
-        counter = 0
-        ready_to_stop = False
-        largest_change = 0
-        frequency = defaultdict(int)
+        optimized_routes = list()       #cache for quantum resequenced routes
+        counter_of_last_threshold = 0   #holds the global counter's value when the thershold happened
+        last_threshold = random.randint(int(0.6 * N), int(1.1 * N)) #number of moves until we consider a diversification or intensification change
+        counter_of_last_best = 0        #hold the global counter's value when the last best solution was found
+        intensification_counter = 2     #counter used to determine if we do intensification
+        diversification = True          #bool to control if diversification is on or off
+        diversification_counter = 0     #counter used to to determine if we do intensification
+        counter = 0                     #primary itertor for the tabu search
+        ready_to_stop = False           #set this to True to stop the tabu search
+        largest_change = 0              #holds the largest improvment in solution cost for a single move
+        frequency = defaultdict(int)    #not used at this time
 
         neighborhood = [[] for _ in range(len(weights))]
         for d in dests:
@@ -499,6 +503,7 @@ class TabuSolver(VRPSolver):
                     feasible = False
                     infeasible_amount += vehicle_weights[i] - capacities[i] 
 
+            # Local Search
             # 7. create candidate list of neighbors to current solution (8, 9, 10)
             # 8. 0,1 
             if diversification == False:                
@@ -578,12 +583,12 @@ class TabuSolver(VRPSolver):
                                     inf_neighbors.append(n)
 
 
-            current_best_neighbor = []
+            current_best_neighbor = []          #holds the best neighbor found by the local search (might be tabu)
             current_best_cost = self.max_dist
             current_best_move = ""
-            selected_neighbor = []
+            selected_neighbor = []              #holds the best non-tabu feasible move
             selected_neighbor_cost = self.max_dist
-            selected_inf_neighbor = []
+            selected_inf_neighbor = []          #holds the best non-tabu infeasible move
             selected_inf_neighbor_cost = self.max_dist
 
             # 11. Strategic Oscillation (12, 13)
@@ -684,7 +689,7 @@ class TabuSolver(VRPSolver):
                 if current_best_feasible == True:
                     if best_cost - current_best_cost > largest_change:
                         largest_change = best_cost - current_best_cost
-                        #ignore tabu and use it anyways
+                    #ignore tabu and use it anyways
                     best_cost = current_best_cost
                     print('total_cost =', best_cost, 'move=', current_best_move, 'counter= ', counter)
                     best_solution = copy.deepcopy(current_best_neighbor.clusters)
@@ -718,10 +723,7 @@ class TabuSolver(VRPSolver):
                     diversification = True
                     intensification_counter = 1   
                     diversification_counter += 1
-                    neighborhood = [[] for _ in range(len(weights))]
-                    for d in dests:
-                        indices = np.argpartition(costs[d][:], int(vehicles * 2))[:int(vehicles * 2)]
-                        neighborhood[d] = indices
+                    neighborhood = self.update_neighborhood(dests, costs, weights, vehicles * 2)
                 elif intensification_counter == 1 and diversification_counter % 10 == 0: #intensification
                     print('intensification', counter)
                     print('div counter ', diversification_counter)
@@ -739,10 +741,7 @@ class TabuSolver(VRPSolver):
                     last_threshold = random.randint(int(0.6 * N), int(1.1 * N))
                     diversification = False
                     intensification_counter +=1
-                    neighborhood = [[] for _ in range(len(weights))]
-                    for d in dests:
-                        indices = np.argpartition(costs[d][:], vehicles)[:vehicles]
-                        neighborhood[d] = indices          
+                    neighborhood = self.update_neighborhood(dests, costs, weights, vehicles)     
 
             # 17. Sparse Quantum Resequencing
             if counter - counter_of_last_best == 2000:      
