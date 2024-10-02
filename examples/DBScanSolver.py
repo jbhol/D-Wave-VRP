@@ -21,7 +21,7 @@ if __name__ == '__main__':
     only_one_const = 10000000.
     order_const = 1.
 
-    for t in ['cmt4.vrp']:  #'cmt4.vrp' 'example_small2'
+    for t in ['cmt5.vrp']:  #'cmt4.vrp' 'example_small2'
         print("Test : ", t)
 
         # Reading problem from file.
@@ -42,7 +42,7 @@ if __name__ == '__main__':
             print("Tabu Solver hasn't find solution.\n")
         else:
             print("Tabu Solution : ", solution.solution) 
-            print("Tabu Total cost : ", solution.total_cost())
+            print("Tabu Total cost : ", solution.total_cost())            
             print("\n")            
             file_name = 'tests/cvrp/' + t + '.txt'
             if os.path.exists(file_name):
@@ -52,6 +52,7 @@ if __name__ == '__main__':
                 sys.stdout = file
                 print("Tabu Solution : ", solution.solution) 
                 print("Tabu Total cost : ", solution.total_cost())
+                print("Best solution was found on counter : ", solution.step)
                 print(time.time())            
                 sys.stdout = original_stdout
             plot_all_solutions(g, solution.solution, t)

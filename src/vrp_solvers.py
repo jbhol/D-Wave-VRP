@@ -795,7 +795,7 @@ class TabuSolver(VRPSolver):
                 if problem.last_source:
                     l.append(problem.out_nearest_sources[l[len(l) - 1]])
 
-        solution = VRPSolution(self.problem, None, None, best_solution)
+        solution = VRPSolution(self.problem, None, None, best_solution, counter_of_last_best)
         return solution
 
 

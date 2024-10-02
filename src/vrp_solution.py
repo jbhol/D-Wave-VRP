@@ -11,8 +11,9 @@ class VRPSolution:
     # solution - solution in final form : list of the lists of vehicles paths. Used to
     # create VRPSolution other way than from QUBO solution. 
     # It is needed to provide sample or solution parameter.
-    def __init__(self, problem, sample = None, vehicle_limits = None, solution = None):
+    def __init__(self, problem, sample = None, vehicle_limits = None, solution = None, step = 0):
         self.problem = problem
+        self.step = step
         
         if solution != None:
             self.solution = solution
