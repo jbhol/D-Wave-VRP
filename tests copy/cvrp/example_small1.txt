@@ -1,0 +1,2 @@
+Tabu Solution :  [[0, 8, 7, 9, 11, 6, 4, 0], [], [1, 2, 5, 3, 10, 0]]
+Tabu Total cost :  422

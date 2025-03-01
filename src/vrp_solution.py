@@ -54,17 +54,24 @@ class VRPSolution:
 
     # Checks if solution is correct.
     def check(self):
-        capacities = self.problem.capacities
+        capacity = self.problem.capacity
+        battery = self.problem.battery
         weights = self.problem.weights
         solution = self.solution
         vehicle_num = 0
 
         for vehicle_dests in solution:
-            cap = capacities[vehicle_num]
+            cap = capacity
             for dest in vehicle_dests:
                 cap -= weights[dest]
             vehicle_num += 1
             if cap < 0: 
+                return False
+
+        for vehicle_dests in solution:
+            bat, tim = self.calc_power_and_time(vehicle_dests)
+            vehicle_num += 1
+            if battery - bat < 0: 
                 return False
 
         dests = self.problem.dests
@@ -77,6 +84,69 @@ class VRPSolution:
             return False
 
         return True
+
+    def sum_cap(self, route):
+        sum_cap = 0
+        for node in route:
+            sum_cap += self.problem.weights[node]
+        return sum_cap
+
+    def calc_power_and_time(self, route):
+        sum_power = 0
+        sum_time = 0
+
+        if len(route) == 0:
+            return 0, 0
+
+        #power to first node
+        dist = self.problem.costs[0][route[0]]
+        cap = self.sum_cap(route)
+        top = dist * (self.problem.droneweight + cap)
+        bottom = (370 * self.problem.lifttodragratio * self.problem.conversionefficiency * (self.problem.maxrateofpower - self.problem.powerconsumption))
+        time = top / bottom
+        sum_power += self.problem.maxrateofpower * time
+        sum_power += self.problem.extrapower
+        sum_time += time + self.problem.extratime
+
+        #power for deliveries
+        for i, node in enumerate(route[:-1]):
+            dist = self.problem.costs[node][route[i+1]]
+            cap = self.sum_cap(route[i+1:])
+            top = dist * (self.problem.droneweight + cap)
+            bottom = (370 * self.problem.lifttodragratio * self.problem.conversionefficiency * (self.problem.maxrateofpower - self.problem.powerconsumption))
+            time = top / bottom
+            sum_power += self.problem.maxrateofpower * time
+            sum_power += self.problem.extrapower
+            sum_time += time + self.problem.extratime
+
+        #power to go back to depot
+        dist = self.problem.costs[route[-1]][0]
+        cap = 0
+        top = dist * (self.problem.droneweight + cap)
+        bottom = (370 * self.problem.lifttodragratio * self.problem.conversionefficiency * (self.problem.maxrateofpower - self.problem.powerconsumption))
+        time = top / bottom
+        sum_power += self.problem.maxrateofpower * time
+        sum_power += self.problem.extrapower
+        sum_time += time + self.problem.extratime
+        return sum_power, sum_time
+
+    # Returns total time of solution (minutes)
+    def total_power_and_time(self):
+        costs = self.problem.costs
+        source = self.problem.source
+        solution = self.solution
+        time_cost = 0
+        power_cost = 0
+
+        for vehicle_dests in solution:
+            if vehicle_dests == []:
+                continue
+            power, time = self.calc_power_and_time(vehicle_dests)
+            power_cost += power
+            time_cost += time
+        #time_cost += self.problem.extratime * (len(vehicle_dests) + 1)
+        return power_cost, time_cost *60      
+
 
     # Returns total cost of solution.
     def total_cost(self):

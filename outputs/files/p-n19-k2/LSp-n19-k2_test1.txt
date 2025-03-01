@@ -1,0 +1,7 @@
+Tabu Solution :  [[], [0, 4, 11, 0], [0, 7, 17, 0], [0, 5, 13, 0], [0, 14, 1, 0], [0, 8, 16, 0], [0, 2, 6, 0], [0, 10, 18, 0], [0, 15, 9, 0], [0, 3, 12, 0]]
+Tabu # of routes : 10
+Tabu Total cost :  50.2
+Tabu Total time : 499.87567567567567
+Tabu Total power : 1.623756756756757
+Best solution was found on counter :  0
+1740714876.2555258

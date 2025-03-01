@@ -41,6 +41,7 @@ class VRPProblem:
 
         self.costs = costs
         self.capacities = capacities
+        self.capacity = capacities[0]
         self.dests = dests
         self.weights = weights
         self.in_nearest_sources = in_nearest_sources
@@ -48,6 +49,18 @@ class VRPProblem:
         self.first_source = first_source
         self.last_source = last_source
         self.sources = sources
+        self.batteries = capacities
+        for i in range(len(self.batteries)):
+            self.batteries[i] = 1.7
+        self.battery = self.batteries[0]
+        self.maxrateofpower = 0.6
+        self.powerconsumption = 0.1
+        self.lifttodragratio = 3
+        self.conversionefficiency = 0.5
+        self.droneweight = 7.5
+        self.extratime = 0.15
+        self.extrapower = 0.015
+
 
     # Returns qubo with information about capacities.
     def get_capacity_qubo(self, capacity, start_step, final_step):

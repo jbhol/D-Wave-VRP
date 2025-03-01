@@ -1,0 +1,6 @@
+Tabu Solution :  [[0, 10, 3, 8, 9, 0], [0, 6, 7, 0], [0, 12, 15, 0], [], [0, 1, 0], [0, 2, 13, 0], [], [], [], [0, 4, 11, 0], [0, 5, 14, 0]]
+Tabu Total cost :  40.59999999999999
+Tabu Total time : 6.655855855855856
+Tabu Total power : 3.9935135135135136
+Best solution was found on counter :  7
+1740500722.3572996
