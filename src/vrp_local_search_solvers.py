@@ -280,6 +280,7 @@ class TabuLocalSearchSolver(LocalSearchSolver):
 
             if selected_neighbor == []:
                 #Fix Routes
+                print('FIX ROUTES')
                 n = self.fix_infeasible_routes(inf_neighbors, cur_routes)
                 #keep track of overall best neighbor
                 if cost < current_best_cost:
@@ -380,7 +381,7 @@ class TabuLocalSearchSolver(LocalSearchSolver):
             if len(route) == 2:
                 route.clear()
 
-        solution = VRPSolution(self.problem, solution=self.cur_solution)
+        solution = VRPSolution(self.problem, solution=self.cur_solution, step=counter_of_last_best)
         return solution
     
 

@@ -892,7 +892,7 @@ class TabuSolver(VRPSolver):
                     neighborhood = self.update_neighborhood(dests, costs, weights, neighborhood_range)     
 
             # 17. Sparse Quantum Resequencing
-            if counter - counter_of_last_best == 50:      
+            if counter - counter_of_last_best == 250:      
                 print('Quantum Go', counter)              
                 clusters = copy.deepcopy(best_solution) 
                 routes = list()

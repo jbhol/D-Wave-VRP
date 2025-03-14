@@ -19,7 +19,7 @@ if __name__ == '__main__':
     only_one_const = 10000000.
     order_const = 1.
 
-    for t in ['p-n16-k8.vrp']:  #'cmt4.vrp' 'example_small2'
+    for t in ['p-n20-k2.vrp']:  #'cmt4.vrp' 'example_small2'
         print("Test : ", t)
 
         # Reading problem from file.
@@ -34,6 +34,10 @@ if __name__ == '__main__':
         # Solving problem on SolutionPartitioningSolver.
         solver = TabuLocalSearchSolver(problem)
         solution = solver.solve(only_one_const, order_const, solver_type = 'cpu')
+
+        #DARREN
+        #take the solution from above as the input to your scheduler
+
 
         # Checking if solution is correct.
         if solution == None or solution.check() == False:

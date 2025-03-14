@@ -1,6 +1,6 @@
 from qiskit_algorithms import QAOA, NumPyMinimumEigensolver
 from qiskit_algorithms.optimizers import COBYLA
-from qiskit.primitives import Sampler
+from qiskit_aer.primitives import Sampler
 from qiskit_optimization.algorithms import (
     MinimumEigenOptimizer,
     RecursiveMinimumEigenOptimizer,
@@ -40,7 +40,7 @@ def solve_qubo(qubo, solver_type = 'cpu'):
     exact = MinimumEigenOptimizer(exact_mes)
 
     exact_result = exact.solve(model)
-    # print(exact_result.variables_dict)
+    #print(exact_result.variables_dict)
 
     sample = {}
 
